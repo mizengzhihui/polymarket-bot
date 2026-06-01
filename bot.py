@@ -116,14 +116,25 @@ def get_best_price(token_id, side):
     return None
 
 
+_log_counters = {}
+def _log_once(key, msg):
+    if key not in _log_counters:
+        _log_counters[key] = 0
+    _log_counters[key] += 1
+    if _log_counters[key] <= 3:
+        log.info(msg)
+    elif _log_counters[key] == 4:
+        log.info(f"  (suppressed repeated: {key})")
+
+
 def check_slippage(token_id, side, target_price):
     """Check if current market price is within slippage tolerance."""
     best = get_best_price(token_id, side)
     if best is None or target_price <= 0:
-        return True  # can't check, proceed
+        return True
     slippage = abs(best - target_price) / target_price
     if slippage > SLIPPAGE_TOLERANCE:
-        log.info(f"  Slippage {slippage*100:.1f}% > {SLIPPAGE_TOLERANCE*100:.0f}%, skipping")
+        _log_once(f"slip_{token_id}", f"  Slippage {slippage*100:.1f}% > {SLIPPAGE_TOLERANCE*100:.0f}%, skipping")
         return False
     return True
 
@@ -148,7 +159,7 @@ def execute_copy(wallet, trade):
     # Cascade allocation
     allowed = score_engine.compute_allocation(wallet, _available_capital, _followed_wallets)
     if allowed <= 0:
-        log.info(f"  Skip {wallet[:10]}...: no allocation left")
+        _log_once(f"noalloc_{wallet}", f"  Skip {wallet[:10]}...: no allocation left")
         return
 
     copy_size = min(allowed, size)
@@ -165,7 +176,11 @@ def execute_copy(wallet, trade):
         order = place_copy_ioc_order(token_id, side, copy_size, ref_price=price)
         if order:
             # place_copy_ioc_order returns (success, order_id, error)
-            order_id = order[1] if isinstance(order, (list, tuple)) and len(order) > 1 else str(order)
+            raw_order_id = order[1] if isinstance(order, (list, tuple)) and len(order) > 1 else str(order)
+            order_id = str(raw_order_id) if raw_order_id else ""
+            if not order_id or order_id == "None" or order_id == "True" or order_id == "False":
+                log.error(f"  No valid order_id returned for {token_id[:10]}... order not placed")
+                return
             _own_positions[token_id] = {
                 "size": copy_size, "entry_price": price,
                 "trader": wallet, "opened_at": time.time(),
@@ -298,6 +313,7 @@ def save_positions():
 
 
 def load_positions():
+    sync_positions_with_chain()
     global _own_positions, _used_capital
     try:
         if os.path.exists(POSITIONS_FILE):
@@ -328,12 +344,33 @@ def load_watchlist():
         pass
 
 
+def sync_positions_with_chain():
+    """Remove positions not found on chain (startup cleanup)."""
+    global _own_positions, _used_capital, _available_capital
+    try:
+        chain_positions = get_own_positions()
+        chain_ids = {p.get("asset", "") for p in chain_positions}
+        fake = [t for t in _own_positions if t not in chain_ids]
+        for tid in fake:
+            log.info("[Sync] Removing fake position %s...", tid[:10])
+            score_engine.release_allocation(_own_positions[tid]["trader"], _own_positions[tid]["size"])
+            del _own_positions[tid]
+        if fake:
+            _used_capital = sum(p["size"] for p in _own_positions.values())
+            _available_capital = max(0, USER_CAPITAL - _used_capital)
+            save_positions()
+            log.info("[Sync] Capital restored to $%.2f", _available_capital)
+    except Exception as e:
+        log.warning("[Sync] Position sync failed: %s", e)
+
+
 def main_loop():
     global _followed_wallets, _available_capital, _used_capital, _paused
 
     log.info("=== Polymarket Bot v1.3 starting (polling mode) ===")
     load_positions()
     load_watchlist()
+    sync_positions_with_chain()
 
     _available_capital = USER_CAPITAL - _used_capital
     if USER_CAPITAL < MIN_VIABLE_CAPITAL:
@@ -434,3 +471,4 @@ def start():
 
 if __name__ == "__main__":
     start()
+
