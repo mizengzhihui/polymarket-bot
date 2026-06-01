@@ -190,12 +190,12 @@ def check_stop_loss():
     try:
         positions = get_own_positions()
         for pos in positions:
-            token_id = pos.get("token_id", "")
+            token_id = pos.get("asset", "")
             if token_id not in _own_positions:
                 continue
             my_pos = _own_positions[token_id]
             entry = my_pos["entry_price"]
-            current = float(pos.get("price", entry))
+            current = float(pos.get("current_price", entry))
 
             pnl_pct = (current - entry) / entry if entry > 0 else 0
 
@@ -286,20 +286,22 @@ def report_status():
 
 
 def save_positions():
+    global _used_capital
     try:
         with open(POSITIONS_FILE, "w") as f:
-            json.dump({"positions": _own_positions, "updated": time.time()}, f)
+            json.dump({"positions": _own_positions, "used_capital": _used_capital, "updated": time.time()}, f)
     except Exception:
         pass
 
 
 def load_positions():
-    global _own_positions
+    global _own_positions, _used_capital
     try:
         if os.path.exists(POSITIONS_FILE):
             with open(POSITIONS_FILE) as f:
                 data = json.load(f)
             _own_positions = data.get("positions", {})
+            _used_capital = float(data.get("used_capital", 0))
     except Exception:
         pass
 
