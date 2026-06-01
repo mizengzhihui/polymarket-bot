@@ -219,11 +219,24 @@ def execute_copy(wallet, trade):
             _used_capital += copy_size
             score_engine.record_allocation_used(wallet, copy_size)
             save_positions()
-            log.info(f"  Copied: ${copy_size:.2f} {side} on {token_id[:10]}...")
-            send_feishu("新跟单", [
-                f"跟单对象: {wallet[:10]}...",
-                f"标的: {token_id[:10]}...",
-                f"金额: ${copy_size:.2f} @ ${price:.4f}",
+            # Look up market name
+            market_name = token_id[:10] + "..."
+            try:
+                from config import GAMMA_API, safe_get
+                resp = safe_get(f"{GAMMA_API}/markets", params={"clob_token_ids": token_id}, timeout=5)
+                if resp and resp.status_code == 200:
+                    mdata = resp.json()
+                    if mdata:
+                        q = mdata[0].get("question", "")
+                        if q:
+                            market_name = q[:30] + ("..." if len(q) > 30 else "")
+            except Exception:
+                pass
+            log.info(f"  Copied: ${copy_size:.2f} {side} on {market_name} (trader: {wallet[:10]}...)")
+            send_feishu("📊 新跟单", [
+                f"**跟单对象**: `{wallet[:15]}...`",
+                f"**市场**: {market_name}",
+                f"**金额**: ${copy_size:.2f}  x  {side} @ ${price:.4f}",
             ])
     except Exception as e:
         log.error(f"  Order failed: {e}")
