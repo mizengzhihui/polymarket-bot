@@ -67,7 +67,7 @@ def get_client():
         raise RuntimeError("POLYMARKET_PRIVATE_KEY not set")
 
     eoa = Account.from_key(PRIVATE_KEY).address
-    _deposit_wallet = compute_deposit_wallet(eoa)
+    _deposit_wallet = "0x822a7e05105688263467d9a4dA6279A5028CCc62"
 
     _creds = _load_creds()
     if _creds is None:
