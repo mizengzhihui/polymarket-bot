@@ -6,11 +6,14 @@ from config import DATA_API, GAMMA_API, safe_get, LEADERBOARD_TOP_N, LEADERBOARD
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 def get_leaderboard(category="monthly", limit=20):
-    interval_map = {"daily": "1d", "weekly": "7d", "monthly": "30d", "yearly": "365d", "all": "all"}
-    interval = interval_map.get(category, "30d")
-    params = {"limit": min(limit, 100), "offset": 0, "order_by": "volume", "is_leaderboard": "true", "interval": interval}
+    """Fetch top traders from Polymarket leaderboard.
+    Uses /v1/leaderboard endpoint with OVERALL category and PNL ordering.
+    """
+    period_map = {"daily": "24H", "weekly": "7D", "monthly": "MONTH", "yearly": "YEAR", "all": "ALL"}
+    period = period_map.get(category, "MONTH")
+    params = {"category": "OVERALL", "timePeriod": period, "orderBy": "PNL", "limit": min(limit, 100)}
     try:
-        resp = safe_get(f"{DATA_API}/leaderboard", params=params, timeout=10)
+        resp = safe_get(f"{DATA_API}/v1/leaderboard", params=params, timeout=10)
         data = resp.json() if resp and resp.status_code == 200 else []
         traders = []
         for entry in data:
@@ -19,11 +22,8 @@ def get_leaderboard(category="monthly", limit=20):
                 continue
             traders.append({
                 "address": addr, "rank": int(entry.get("rank", 0)),
-                "volume": float(entry.get("volume", 0)),
-                "profit": float(entry.get("profit", 0)),
-                "win_rate": float(entry.get("win_rate", 0)),
-                "trades": int(entry.get("trades", 0)),
-                "roi": float(entry.get("roi", 0)),
+                "volume": float(entry.get("vol", 0)),
+                "profit": float(entry.get("pnl", 0)),
                 "source": f"leaderboard_{category}",
             })
         return traders
