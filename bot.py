@@ -72,7 +72,12 @@ def discover_traders():
         try:
             trades = get_trader_trades(t["address"], limit=100)
             value = get_trader_value(t["address"])
-            wins = sum(1 for tr in trades if tr.get("side") == "SELL" and float(tr.get("price", 0)) > 0)
+            # Estimate wins: use cashPnl from API if available, else count sells with higher price than buys
+            wins = sum(1 for tr in trades if float(tr.get("cashPnl", 0)) > 0)
+            if wins == 0 and trades:
+                # Fallback: approximate win as sell trades where price > 0
+                buys = {t.get("asset"): float(t.get("price", 0)) for t in trades if t.get("side") == "BUY"}
+                wins = sum(1 for t in trades if t.get("side") == "SELL" and float(t.get("price", 0)) > buys.get(t.get("asset"), 0))
             score_engine.update_snapshot(
                 t["address"],
                 portfolio_value=value,
@@ -205,14 +210,20 @@ def check_stop_loss():
     global _available_capital, _used_capital
 
     try:
-        positions = get_own_positions()
-        for pos in positions:
-            token_id = pos.get("asset", "")
-            if token_id not in _own_positions:
+        chain_positions = get_own_positions()
+        chain_map = {p.get("asset", ""): p for p in chain_positions}
+        for token_id, my_pos in list(_own_positions.items()):
+            chain_pos = chain_map.get(token_id)
+            if not chain_pos:
+                log.warning("[SL] Position %s... not on chain, removing", token_id[:10])
+                score_engine.release_allocation(my_pos["trader"], my_pos["size"])
+                _available_capital += my_pos["size"]
+                _used_capital -= my_pos["size"]
+                del _own_positions[token_id]
+                save_positions()
                 continue
-            my_pos = _own_positions[token_id]
             entry = my_pos["entry_price"]
-            current = float(pos.get("current_price", entry))
+            current = float(chain_pos.get("current_price", entry))
 
             pnl_pct = (current - entry) / entry if entry > 0 else 0
 

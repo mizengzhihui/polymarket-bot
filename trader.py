@@ -114,7 +114,10 @@ def get_order_book(token_id: str) -> dict:
     client = get_client()
     try:
         return client.get_order_book(token_id)
-    except Exception:
+    except Exception as e:
+        err_str = str(e)
+        if "404" in err_str or "No orderbook" in err_str:
+            pass  # silent skip for closed/inactive markets
         return None
 
 
