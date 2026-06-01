@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang=zh-CN>
+<head>
+<meta charset=UTF-8>
+<meta name=viewport content=width=device-width, initial-scale=1.0>
+<title>Poly_Copy 仪表盘</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0c14;color:#c8cdd8;font-family:'JetBrains Mono','Courier New',monospace;padding:2rem}
+h1{color:#22c55e;font-size:1.3rem;margin-bottom:1.5rem}
+h1 span{color:#697086;font-size:0.85rem}
+.card{background:#111521;border:1px solid #1e2438;border-radius:8px;padding:1.2rem;margin-bottom:1rem}
+.card h2{color:#eef0f6;font-size:0.95rem;margin-bottom:0.8rem}
+.row{display:flex;gap:1rem;flex-wrap:wrap}
+.metric{flex:1;min-width:120px}
+.metric .val{font-size:1.4rem;font-weight:700;color:#22c55e}
+.metric .val.red{color:#ef4444}
+.metric .label{font-size:0.7rem;color:#697086;text-transform:uppercase;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:0.8rem}
+th{text-align:left;color:#697086;border-bottom:1px solid #1e2438;padding:0.5rem 0.3rem;font-size:0.7rem}
+td{padding:0.4rem 0.3rem;border-bottom:1px solid #1e2438}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-dot.green{background:#22c55e}
+.status-dot.red{background:#ef4444}
+.status-dot.yellow{background:#f59e0b}
+#updated{color:#697086;font-size:0.7rem;margin-top:1rem}
+</style>
+</head>
+<body>
+<h1>Poly_Copy <span>仪表盘</span></h1>
+<div class=row>
+  <div class=card style=flex:2>
+    <h2>状态</h2>
+    <div id=status><span class=status-dot green></span> 加载中...</div>
+  </div>
+  <div class=card style=flex:3>
+    <h2>指标</h2>
+    <div class=row id=metrics>
+      <div class=metric><div class=val>--</div><div class=label>余额</div></div>
+      <div class=metric><div class=val>--</div><div class=label>跟单数</div></div>
+      <div class=metric><div class=val>--</div><div class=label>错误</div></div>
+      <div class=metric><div class=val>--</div><div class=label>运行时长</div></div>
+    </div>
+  </div>
+</div>
+<div class=card>
+  <h2>近期事件</h2>
+  <table><thead><tr><th>时间</th><th>类型</th><th>消息</th></tr></thead><tbody id=events></tbody></table>
+</div>
+<div class=card>
+  <h2>交易员评分</h2>
+  <table><thead><tr><th>钱包</th><th>评分</th><th>倍数</th><th>可信</th></tr></thead><tbody id=traders></tbody></table>
+</div>
+<p id=updated>等待数据...</p>
+<script>
+async function refresh(){
+  try{
+    const r=await fetch('/api/bot'); if(!r.ok) throw r.status;
+    const d=await r.json();
+    const st=d.status;
+    document.getElementById('status').innerHTML='<span class=status-dot +(st===running?green:st===paused?yellow:red)+></span> '+(st==='running'?'运行中':st==='paused'?'已暂停':'已停止');
+    document.querySelector('#metrics .metric:nth-child(1) .val').textContent='$'+(d.prev_balance||0).toFixed(2);
+    document.querySelector('#metrics .metric:nth-child(2) .val').textContent=d.trades_copied||0;
+    document.querySelector('#metrics .metric:nth-child(3) .val').textContent=d.errors||0;
+    document.querySelector('#metrics .metric:nth-child(4) .val').textContent=d.uptime_hours?.toFixed(1)+' 小时'||'--';
+    const ev=d.recent_events||[]; let eh='';
+    for(let e of ev.slice(-15)) eh+='<tr><td>'+e.time+'</td><td>'+e.type+'</td><td>'+(e.message||'').slice(0,60)+'</td></tr>';
+    document.getElementById('events').innerHTML=eh;
+    const ts=d.trader_scores||{}; let th='';
+    for(let w in ts){let s=ts[w];th+='<tr><td>'+w.slice(0,10)+'...</td><td>'+s.score+'</td><td>'+s.multiplier+'x</td><td>'+(s.reliable?'✅':'❌')+'</td></tr>'}
+    document.getElementById('traders').innerHTML=th;
+    document.getElementById('updated').textContent='更新于: '+new Date().toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'});
+  }catch(e){document.getElementById('status').innerHTML='<span class=status-dot red></span> 离线'}
+}
+refresh(); setInterval(refresh,5000);
+</script>
+</body>
+</html>

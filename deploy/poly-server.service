@@ -1,0 +1,16 @@
+[Unit]
+Description=Poly_Copy Dashboard Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/poly_copy
+ExecStart=/usr/bin/python3 -u server.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/poly_copy/server.log
+StandardError=append:/opt/poly_copy/server.log
+
+[Install]
+WantedBy=multi-user.target
