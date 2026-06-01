@@ -34,6 +34,9 @@ import logging as _lk
 class _PyClobFilter(_lk.Filter):
     def filter(self, record):
         return "py_clob" not in record.name
+# Add filter to ALL existing and future root handlers
+for _h in _lk.getLogger().handlers:
+    _h.addFilter(_PyClobFilter())
 _lk.getLogger().addFilter(_PyClobFilter())
 
 from common.feishu import send_feishu as _feishu_send
