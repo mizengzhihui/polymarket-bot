@@ -330,7 +330,7 @@ def place_copy_ioc_order(token_id, side, amount, ref_price=None):
                 price=worst_price,
             ),
             options=PartialCreateOrderOptions(tick_size="0.01"),
-            order_type=OrderType.IOC,
+            order_type=OrderType.FAK,
         )
         order_id = str(resp[0]) if isinstance(resp, (list, tuple)) else resp.get("orderID", resp.get("id", str(resp)))
         return True, order_id, None
