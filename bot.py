@@ -202,7 +202,7 @@ def check_stop_loss():
             if pnl_pct <= -STOP_LOSS_PCT:
                 log.info(f"[SL] Stopping {token_id[:10]}... PnL: {pnl_pct*100:.1f}%")
                 try:
-                    cancel_order(my_pos.get("order_id", ""))
+                    cancel_order(my_pos["order_id"]) if my_pos.get("order_id") else log.warning("  No order_id for %s...", token_id[:10])
                     place_copy_ioc_order(token_id, "SELL", my_pos["size"], ref_price=current)
                     trader_wallet = my_pos["trader"]
                     score_engine.record_stop_loss(trader_wallet)
@@ -223,7 +223,7 @@ def check_stop_loss():
             elif pnl_pct >= TAKE_PROFIT_PCT:
                 log.info(f"[TP] Taking profit {token_id[:10]}... PnL: {pnl_pct*100:.1f}%")
                 try:
-                    cancel_order(my_pos.get("order_id", ""))
+                    cancel_order(my_pos["order_id"]) if my_pos.get("order_id") else log.warning("  No order_id for %s...", token_id[:10])
                     place_copy_ioc_order(token_id, "SELL", my_pos["size"], ref_price=current)
                     recovered = my_pos["size"] * current
                     score_engine.release_allocation(my_pos["trader"], my_pos["size"])
@@ -255,7 +255,7 @@ def monitor_closes():
                 try:
                     current_price = float(t.get("price", 0))
                     my_pos = _own_positions[token_id]
-                    cancel_order(my_pos.get("order_id", ""))
+                    cancel_order(my_pos["order_id"]) if my_pos.get("order_id") else log.warning("  No order_id for %s...", token_id[:10])
                     place_copy_ioc_order(token_id, "SELL", my_pos["size"], ref_price=current_price)
                     recovered = my_pos["size"] * current_price if current_price > 0 else my_pos["size"]
                     score_engine.release_allocation(wallet, my_pos["size"])
@@ -270,8 +270,9 @@ def monitor_closes():
 def report_status():
     """Send periodic status to Feishu."""
     global _available_capital, _used_capital, _paused
+    real_capital = _available_capital + _used_capital
     lines = [
-        f"资金池: ${USER_CAPITAL:.2f}",
+        f"资金池: ${real_capital:.2f} (初始${USER_CAPITAL:.2f})",
         f"已用: ${_used_capital:.2f}",
         f"可用: ${_available_capital:.2f}",
         f"持仓数: {len(_own_positions)}",
