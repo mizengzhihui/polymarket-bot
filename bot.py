@@ -10,8 +10,12 @@ Secondary: Data API polling every 30s for close monitoring
 import json, os, sys, time, logging
 from datetime import datetime, timezone
 
+# Suppress SDK noise (404s on closed markets) — apply to all sub-loggers
+for _lg_name in list(logging.root.manager.loggerDict.keys()):
+    if "py_clob" in _lg_name:
+        logging.getLogger(_lg_name).setLevel(logging.CRITICAL)
+
 # Suppress noisy SDK logs for expected 404s on closed markets
-logging.getLogger("py_clob_client_v2").setLevel(logging.WARNING)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(BASE, "results")
