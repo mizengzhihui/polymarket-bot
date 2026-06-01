@@ -28,6 +28,13 @@ from trader import (
     get_order_book, place_copy_ioc_order, get_own_positions,
     cancel_order, poll_all_trader_buys, poll_all_trader_sells,
 )
+
+# Suppress SDK noise (loggers now exist after import)
+import logging as _lk
+for _ln in list(_lk.root.manager.loggerDict.keys()):
+    if "py_clob" in _ln:
+        _lk.getLogger(_ln).setLevel(_lk.CRITICAL)
+
 from common.feishu import send_feishu as _feishu_send
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
