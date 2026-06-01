@@ -526,7 +526,7 @@ def ws_subscribe(event_type, callback):
 
 
 # ============================================================
-# Close monitoring (v1.3) — poll Data API for trader sells
+# Trade monitoring (v1.3) — poll Data API for trade detection
 # ============================================================
 _last_trade_timestamps = {}  # wallet -> last seen timestamp
 
@@ -567,3 +567,39 @@ def poll_all_trader_sells(wallets):
         if sells:
             all_sells[w] = sells
     return all_sells
+
+
+def poll_trader_buys(wallet, since_timestamp=None):
+    """Poll Data API for new buy trades by a trader. Returns list of buy trades."""
+    global _last_trade_timestamps
+    from config import DATA_API, safe_get
+
+    since = since_timestamp or _last_trade_timestamps.get(wallet + "_buy", 0)
+    try:
+        resp = safe_get(f"{DATA_API}/trades", params={"user": wallet, "limit": 20}, timeout=10)
+        if not resp or resp.status_code != 200:
+            return []
+        trades = resp.json()
+        buys = []
+        latest_ts = since
+        for t in trades:
+            ts = int(t.get("timestamp", 0))
+            if ts > since and t.get("side") == "BUY":
+                buys.append(t)
+            if ts > latest_ts:
+                latest_ts = ts
+        if latest_ts > since:
+            _last_trade_timestamps[wallet + "_buy"] = latest_ts
+        return buys
+    except Exception:
+        return []
+
+
+def poll_all_trader_buys(wallets):
+    """Poll for buys across all tracked wallets."""
+    all_buys = {}
+    for w in wallets:
+        buys = poll_trader_buys(w)
+        if buys:
+            all_buys[w] = buys
+    return all_buys

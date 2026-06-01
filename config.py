@@ -86,8 +86,8 @@ ALLOCATION_PAUSE_THRESHOLD = _safe_float("ALLOCATION_PAUSE_THRESHOLD", "0.80")  
 # ============================================================
 WS_RECONNECT_DELAY_SEC = _safe_float("WS_RECONNECT_DELAY_SEC", "2")
 WS_RECONNECT_MAX_DELAY_SEC = _safe_float("WS_RECONNECT_MAX_DELAY_SEC", "60")
-POLLING_INTERVAL_SEC = _safe_int("POLLING_INTERVAL_SEC", "300")  # backup polling every 5 min
-CLOSE_MONITOR_INTERVAL_SEC = _safe_int("CLOSE_MONITOR_INTERVAL_SEC", "120")  # check closes every 2 min
+POLLING_INTERVAL_SEC = _safe_int("POLLING_INTERVAL_SEC", "20")   # primary polling (15-20s)  # backup polling every 5 min
+CLOSE_MONITOR_INTERVAL_SEC = _safe_int("CLOSE_MONITOR_INTERVAL_SEC", "30")  # check closes every 2 min
 
 # ============================================================
 # Per-wallet overrides
