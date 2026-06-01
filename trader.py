@@ -443,3 +443,127 @@ def get_own_positions():
             # Stale cache: return empty but log warning
             print(f"  [get_own_positions] API failed, cache stale, returning empty")
         return []
+
+
+
+# ============================================================
+# WebSocket (v1.3) — real-time open trade detection
+# ============================================================
+import threading, json as _json, time as _time, logging as _logging
+
+_ws = None
+_ws_thread = None
+_ws_running = False
+_ws_callbacks = {}  # event_type -> [callbacks]
+
+
+def _ws_connect():
+    """Connect to Polymarket WebSocket with auto-reconnect."""
+    import websocket
+    from config import WS_HOST, WS_RECONNECT_DELAY_SEC, WS_RECONNECT_MAX_DELAY_SEC
+
+    def on_message(ws, message):
+        try:
+            data = _json.loads(message)
+            for cb in _ws_callbacks.get("message", []):
+                try:
+                    cb(data)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def on_error(ws, error):
+        _logging.warning(f"[WS] Error: {error}")
+
+    def on_close(ws, close_status_code, close_msg):
+        _logging.info(f"[WS] Closed ({close_status_code})")
+
+    def on_open(ws):
+        _logging.info("[WS] Connected")
+
+    delay = WS_RECONNECT_DELAY_SEC
+    while _ws_running:
+        try:
+            ws = websocket.WebSocketApp(
+                WS_HOST,
+                on_message=on_message,
+                on_error=on_error,
+                on_close=on_close,
+                on_open=on_open,
+            )
+            ws.run_forever(ping_interval=30, ping_timeout=10)
+        except Exception as e:
+            _logging.warning(f"[WS] Connection failed: {e}")
+        if not _ws_running:
+            break
+        _time.sleep(min(delay, WS_RECONNECT_MAX_DELAY_SEC))
+        delay = min(delay * 1.5, WS_RECONNECT_MAX_DELAY_SEC)
+
+
+def ws_start():
+    """Start WebSocket in background thread."""
+    global _ws_running, _ws_thread
+    if _ws_running:
+        return
+    _ws_running = True
+    _ws_thread = threading.Thread(target=_ws_connect, daemon=True)
+    _ws_thread.start()
+    _logging.info("[WS] Background thread started")
+
+
+def ws_stop():
+    """Stop WebSocket connection."""
+    global _ws_running
+    _ws_running = False
+
+
+def ws_subscribe(event_type, callback):
+    """Register a callback for an event type."""
+    if event_type not in _ws_callbacks:
+        _ws_callbacks[event_type] = []
+    _ws_callbacks[event_type].append(callback)
+
+
+# ============================================================
+# Close monitoring (v1.3) — poll Data API for trader sells
+# ============================================================
+_last_trade_timestamps = {}  # wallet -> last seen timestamp
+
+
+def poll_trader_sells(wallet, since_timestamp=None):
+    """Poll Data API for new sell trades by a trader.
+    Returns list of sell trades newer than since_timestamp (or last recorded).
+    """
+    global _last_trade_timestamps
+    from config import DATA_API, safe_get
+
+    since = since_timestamp or _last_trade_timestamps.get(wallet, 0)
+    try:
+        resp = safe_get(f"{DATA_API}/trades", params={"user": wallet, "limit": 20}, timeout=10)
+        if not resp or resp.status_code != 200:
+            return []
+        trades = resp.json()
+        sells = []
+        latest_ts = since
+        for t in trades:
+            ts = int(t.get("timestamp", 0))
+            if ts > since and t.get("side") == "SELL":
+                sells.append(t)
+            if ts > latest_ts:
+                latest_ts = ts
+        if latest_ts > since:
+            _last_trade_timestamps[wallet] = latest_ts
+        return sells
+    except Exception:
+        return []
+
+
+def poll_all_trader_sells(wallets):
+    """Poll for sells across all tracked wallets."""
+    all_sells = {}
+    for w in wallets:
+        sells = poll_trader_sells(w)
+        if sells:
+            all_sells[w] = sells
+    return all_sells
