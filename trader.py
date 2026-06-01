@@ -76,8 +76,8 @@ def get_client():
             chain_id=CHAIN_ID,
             key=PRIVATE_KEY,
             signature_type=3,
-            funder=_deposit_wallet,
-        )
+        funder=_deposit_wallet,
+                    )
         _creds = client.create_or_derive_api_key()
         _save_creds(_creds)
     elif isinstance(_creds, dict):
@@ -96,7 +96,7 @@ def get_client():
         creds=_creds,
         signature_type=3,
         funder=_deposit_wallet,
-    )
+            )
     return _client
 
 
