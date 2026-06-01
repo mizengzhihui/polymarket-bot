@@ -17,7 +17,7 @@ def get_leaderboard(category="monthly", limit=20):
         data = resp.json() if resp and resp.status_code == 200 else []
         traders = []
         for entry in data:
-            addr = (entry.get("address") or entry.get("trader") or "").strip().lower()
+            addr = (entry.get("proxyWallet") or entry.get("address") or entry.get("trader") or "").strip().lower()
             if not addr or addr == "0x0000000000000000000000000000000000000000":
                 continue
             traders.append({
@@ -45,8 +45,8 @@ def get_all_leaderboards(top_n=20):
                     all_traders[addr]["rank"] = t["rank"]
                     all_traders[addr]["profit"] = t.get("profit", all_traders[addr]["profit"])
                     all_traders[addr]["volume"] = t.get("volume", all_traders[addr]["volume"])
-                    all_traders[addr]["win_rate"] = t.get("win_rate", all_traders[addr]["win_rate"])
-                    all_traders[addr]["roi"] = t.get("roi", all_traders[addr]["roi"])
+                    # win_rate removed - not provided by API
+#                     all_traders[addr]["roi"] = t.get("roi", all_traders[addr]["roi"])
     return list(all_traders.values())
 
 def scan_newbies():
