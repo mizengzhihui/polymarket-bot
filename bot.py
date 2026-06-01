@@ -10,6 +10,9 @@ Secondary: Data API polling every 30s for close monitoring
 import json, os, sys, time, logging
 from datetime import datetime, timezone
 
+# Suppress noisy SDK logs for expected 404s on closed markets
+logging.getLogger("py_clob_client_v2").setLevel(logging.WARNING)
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(BASE, "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -135,8 +138,11 @@ def _log_once(key, msg):
 def check_slippage(token_id, side, target_price):
     """Check if current market price is within slippage tolerance."""
     best = get_best_price(token_id, side)
-    if best is None or target_price <= 0:
-        return True
+    if best is None:
+        _log_once(f"nobook_{token_id}", f"  No orderbook for {token_id[:10]}..., skipping")
+        return False
+    if target_price <= 0:
+        return False
     slippage = abs(best - target_price) / target_price
     if slippage > SLIPPAGE_TOLERANCE:
         _log_once(f"slip_{token_id}", f"  Slippage {slippage*100:.1f}% > {SLIPPAGE_TOLERANCE*100:.0f}%, skipping")
@@ -166,6 +172,14 @@ def execute_copy(wallet, trade):
     if allowed <= 0:
         _log_once(f"noalloc_{wallet}", f"  Skip {wallet[:10]}...: no allocation left")
         return
+
+    # Extra check: don't exceed per-wallet cap within same polling cycle
+    state = score_engine._allocation_state.get(wallet, {})
+    remaining = state.get("cap", 0) - state.get("used", 0)
+    if remaining < 2:
+        _log_once(f"cap_{wallet}", f"  Skip {wallet[:10]}...: cap remaining ${remaining:.2f} too small")
+        return
+    allowed = min(allowed, remaining)
 
     copy_size = min(allowed, size)
     if copy_size < 2:
@@ -274,11 +288,16 @@ def monitor_closes():
     """Poll followed traders for sells and close matching positions."""
     if not _followed_wallets:
         return
+    try:
+        chain_positions = get_own_positions()
+        chain_ids = {p.get("asset", "") for p in chain_positions}
+    except Exception:
+        chain_ids = set()
     sells = poll_all_trader_sells(_followed_wallets)
     for wallet, trades in sells.items():
         for t in trades:
             token_id = t.get("asset", "")
-            if token_id in _own_positions and _own_positions[token_id]["trader"] == wallet:
+            if token_id in _own_positions and token_id in chain_ids and _own_positions[token_id]["trader"] == wallet:
                 log.info(f"[Close] Trader {wallet[:10]}... closed {token_id[:10]}...")
                 try:
                     current_price = float(t.get("price", 0))
