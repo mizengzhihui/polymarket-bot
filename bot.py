@@ -29,11 +29,12 @@ from trader import (
     cancel_order, poll_all_trader_buys, poll_all_trader_sells,
 )
 
-# Suppress SDK noise (loggers now exist after import)
+# Suppress SDK noise via root filter (catches even lazy loggers)
 import logging as _lk
-for _ln in list(_lk.root.manager.loggerDict.keys()):
-    if "py_clob" in _ln:
-        _lk.getLogger(_ln).setLevel(_lk.CRITICAL)
+class _PyClobFilter(_lk.Filter):
+    def filter(self, record):
+        return "py_clob" not in record.name
+_lk.getLogger().addFilter(_PyClobFilter())
 
 from common.feishu import send_feishu as _feishu_send
 
