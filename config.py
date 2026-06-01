@@ -123,8 +123,8 @@ RPC_URLS = [
     "https://rpc-mainnet.maticvigil.com",
 ]
 
-DEPOSIT_WALLET_FACTORY = "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07"
-DEPOSIT_WALLET_IMPLEMENTATION = "0x58CA52ebe0DadfdF531C7062e76746de4Db1eB"
+DEPOSIT_WALLET_FACTORY = "0x00000000000fb5c9adea0298d729a0cb3823cc07"
+DEPOSIT_WALLET_IMPLEMENTATION = "0x58ca52ebe0dadfdf531c7062e76746de4db1eb"
 
 # ============================================================
 # Retry helpers
@@ -185,11 +185,12 @@ def compute_deposit_wallet(eoa_address: str) -> str:
     from web3 import Web3
     from eth_abi import encode
     from Crypto.Hash import keccak
+
     ERC1967_CONST1 = bytes.fromhex("cc3735a920a3ca505d382bbc545af43d6000803e6038573d6000fd5b3d6000f3")
     ERC1967_CONST2 = bytes.fromhex("5155f3363d3d373d3d363d7f360894a13ba1a3210667c828492db98dca3e2076")
     ERC1967_PREFIX = 0x61003d3d8160233d3973
-    factory = Web3.to_checksum_address(DEPOSIT_WALLET_FACTORY)
-    implementation = Web3.to_checksum_address(DEPOSIT_WALLET_IMPLEMENTATION)
+    factory = DEPOSIT_WALLET_FACTORY
+    implementation = DEPOSIT_WALLET_IMPLEMENTATION
     wallet_id = bytes(12) + bytes.fromhex(eoa_address[2:])
     args = encode(["address", "bytes32"], [factory, wallet_id])
     salt = Web3.keccak(args)
