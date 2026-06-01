@@ -259,7 +259,7 @@ def place_copy_order(token_id, side, price, size):
             options=PartialCreateOrderOptions(tick_size="0.01"),
             order_type=OrderType.GTC,
         )
-        order_id = resp.get("orderID", resp.get("id", str(resp)))
+        order_id = str(resp[0]) if isinstance(resp, (list, tuple)) else resp.get("orderID", resp.get("id", str(resp)))
         return True, order_id, None
     except Exception as e:
         return False, None, str(e)
@@ -295,7 +295,7 @@ def place_copy_market_order(token_id, side, amount, ref_price=None):
             options=PartialCreateOrderOptions(tick_size="0.01"),
             order_type=OrderType.FOK,
         )
-        order_id = resp.get("orderID", resp.get("id", str(resp)))
+        order_id = str(resp[0]) if isinstance(resp, (list, tuple)) else resp.get("orderID", resp.get("id", str(resp)))
         return True, order_id, None
     except Exception as e:
         return False, None, str(e)
@@ -329,7 +329,7 @@ def place_copy_ioc_order(token_id, side, amount, ref_price=None):
             options=PartialCreateOrderOptions(tick_size="0.01"),
             order_type=OrderType.IOC,
         )
-        order_id = resp.get("orderID", resp.get("id", str(resp)))
+        order_id = str(resp[0]) if isinstance(resp, (list, tuple)) else resp.get("orderID", resp.get("id", str(resp)))
         return True, order_id, None
     except Exception as e:
         return False, None, str(e)

@@ -164,10 +164,12 @@ def execute_copy(wallet, trade):
     try:
         order = place_copy_ioc_order(token_id, side, copy_size, ref_price=price)
         if order:
+            # place_copy_ioc_order returns (success, order_id, error)
+            order_id = order[1] if isinstance(order, (list, tuple)) and len(order) > 1 else str(order)
             _own_positions[token_id] = {
                 "size": copy_size, "entry_price": price,
                 "trader": wallet, "opened_at": time.time(),
-                "condition_id": condition_id, "order_id": order.get("order_id", ""),
+                "condition_id": condition_id, "order_id": order_id,
             }
             _available_capital -= copy_size
             _used_capital += copy_size
