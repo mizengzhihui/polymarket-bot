@@ -90,6 +90,15 @@ POLLING_INTERVAL_SEC = _safe_int("POLLING_INTERVAL_SEC", "20")   # primary polli
 CLOSE_MONITOR_INTERVAL_SEC = _safe_int("CLOSE_MONITOR_INTERVAL_SEC", "30")  # check closes every 2 min
 
 # ============================================================
+# Legacy — kept for trader.py backward compat
+# ============================================================
+COPY_MULTIPLIER = _safe_float("COPY_MULTIPLIER", "1.0")
+DEFAULT_TRADER_CAPITAL = _safe_float("DEFAULT_TRADER_CAPITAL", "10000")
+MIN_TRADE_SIZE = _safe_float("MIN_TRADE_SIZE", "2")
+MAX_POSITION_PCT = _safe_float("MAX_POSITION_PCT", "0.08")
+MAX_POSITION_LOSS = _safe_float("MAX_POSITION_LOSS", "4.00")
+
+# ============================================================
 # Per-wallet overrides
 # ============================================================
 PER_WALLET_CONFIG = {}

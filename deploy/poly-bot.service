@@ -1,16 +1,14 @@
 [Unit]
-Description=Polymarket Copy-Trading Bot
+Description=Polymarket Copy-Trading Bot (v1.3)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/poly_copy
-ExecStart=/usr/bin/python3 -u bot.py --interval 20
+ExecStart=/usr/bin/python3 -u bot.py
 Restart=always
-RestartSec=30
-CPUQuota=50%
-MemoryMax=400M
+RestartSec=10
 StandardOutput=append:/opt/poly_copy/bot.log
 StandardError=append:/opt/poly_copy/bot.log
 
