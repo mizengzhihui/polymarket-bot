@@ -39,6 +39,22 @@ for _h in _lk.getLogger().handlers:
     _h.addFilter(_PyClobFilter())
 _lk.getLogger().addFilter(_PyClobFilter())
 
+# Feishu relay via US VPS
+import urllib.request as _ur
+import json as _js
+def send_feishu(title, content_lines, color="blue"):
+    import time
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    parts = [{"tag": "markdown", "text": "**" + title + "**"}, {"tag": "hr"}]
+    for line in content_lines:
+        parts.append({"tag": "markdown", "text": line})
+    parts.append({"tag": "markdown", "text": "_UTC: " + now_str + "_"})
+    payload = {"msg_type": "post", "content": {"zh_cn": {"title": title[:50], "content": parts}}}
+    try:
+        req = _ur.Request("http://154.201.76.34:19999", data=_js.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST")
+        _ur.urlopen(req, timeout=10)
+    except Exception:
+        pass
 from common.feishu import send_feishu as _feishu_send
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -559,6 +575,14 @@ def main_loop():
             try:
                 send_daily_report()
                 last_report = now
+            except Exception:
+                pass
+
+        # --- Network health check ---
+        if now - last_network_ok > 120:
+            try:
+                _ur.urlopen("https://clob.polymarket.com/book?token_id=1", timeout=5)
+                last_network_ok = now
             except Exception:
                 pass
 
