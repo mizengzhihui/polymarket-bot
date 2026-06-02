@@ -58,6 +58,49 @@ POSITIONS_FILE = os.path.join(RESULTS_DIR, "own_positions.json")
 WATCHLIST_FILE = os.path.join(RESULTS_DIR, "watchlist.json")
 
 
+def send_daily_report():
+    """Send 2-hour status report."""
+    global _available_capital, _used_capital, _paused
+    try:
+        real_capital = _available_capital + _used_capital
+        pnl = real_capital - USER_CAPITAL
+        pnl_pct = (pnl / USER_CAPITAL * 100) if USER_CAPITAL > 0 else 0
+        
+        lines = [
+            f"**资金**: ${real_capital:.2f} (PnL: ${pnl:+.2f}, {pnl_pct:+.1f}%)",
+            f"**已用**: ${_used_capital:.2f}",
+            f"**可用**: ${_available_capital:.2f}",
+            f"**持仓**: {len(_own_positions)} 个",
+        ]
+        
+        if _own_positions:
+            lines.append("---")
+            try:
+                from config import GAMMA_API, safe_get
+                for tid, pos in list(_own_positions.items())[:10]:
+                    trader = pos["trader"][:10] + "..."
+                    mname = tid[:10] + "..."
+                    try:
+                        resp = safe_get(f"{GAMMA_API}/markets", params={"clob_token_ids": tid}, timeout=5)
+                        if resp and resp.status_code == 200:
+                            md = resp.json()
+                            if md:
+                                q = md[0].get("question", "")
+                                if q:
+                                    mname = q[:25] + ("..." if len(q) > 25 else "")
+                    except:
+                        pass
+                    upnl = (pos["entry_price"] - float(pos.get("current_price", pos["entry_price"]))) * pos["size"]
+                    lines.append(f"  {mname}")
+                    lines.append(f"  ｜${pos['size']:.2f} @ ${pos['entry_price']:.4f} | 跟:`{trader}`")
+            except:
+                pass
+        
+        send_feishu("📊 定时报告", lines)
+    except Exception as e:
+        log.warning("[Report] Error: %s", e)
+
+
 def send_feishu(title, content_lines, color="blue"):
     _feishu_send(FEISHU_WEBHOOK, title, content_lines, color)
 
@@ -229,14 +272,15 @@ def execute_copy(wallet, trade):
                     if mdata:
                         q = mdata[0].get("question", "")
                         if q:
-                            market_name = q[:30] + ("..." if len(q) > 30 else "")
+                            market_name = q[:40] + ("..." if len(q) > 40 else "")
             except Exception:
                 pass
-            log.info(f"  Copied: ${copy_size:.2f} {side} on {market_name} (trader: {wallet[:10]}...)")
-            send_feishu("📊 新跟单", [
-                f"**跟单对象**: `{wallet[:15]}...`",
+            log.info(f"  Copied: ${copy_size:.2f} {side} on {market_name} (trader: {wallet[:15]}...)")
+            side_label = "买入" if side.upper() == "BUY" else "卖出"
+            send_feishu("📈 跟单开仓", [
                 f"**市场**: {market_name}",
-                f"**金额**: ${copy_size:.2f}  x  {side} @ ${price:.4f}",
+                f"**操作**: {side_label} ${copy_size:.2f} @ ${price:.4f}",
+                f"**交易员**: `{wallet[:20]}...`",
             ])
     except Exception as e:
         log.error(f"  Order failed: {e}")
@@ -277,10 +321,12 @@ def check_stop_loss():
                     _used_capital -= my_pos["size"]
                     del _own_positions[token_id]
                     save_positions()
-                    send_feishu("止损", [
-                        f"标的: {token_id[:10]}...",
-                        f"亏损: {pnl_pct*100:.1f}%",
-                        f"回收: ${recovered:.2f}",
+                    mname = token_id[:15] + "..."
+                    pnl_abs = recovered - my_pos["size"]
+                    send_feishu("🛑 止损平仓", [
+                        f"**市场**: {mname}",
+                        f"**亏损**: {pnl_pct*100:.1f}% (${pnl_abs:.2f})",
+                        f"**回收**: ${recovered:.2f}",
                     ])
                 except Exception as e:
                     log.error(f"[SL] Close error: {e}")
@@ -325,14 +371,22 @@ def monitor_closes():
                 try:
                     current_price = float(t.get("price", 0))
                     my_pos = _own_positions[token_id]
-                    cancel_order(my_pos["order_id"]) if my_pos.get("order_id") else log.warning("  No order_id for %s...", token_id[:10])
+                    cancel_order(my_pos["order_id"]) if my_pos.get("order_id") else None
                     place_copy_ioc_order(token_id, "SELL", my_pos["size"], ref_price=current_price)
                     recovered = my_pos["size"] * current_price if current_price > 0 else my_pos["size"]
                     score_engine.release_allocation(wallet, my_pos["size"])
+                    pnl_abs = recovered - my_pos["size"]
                     _available_capital += recovered
                     _used_capital -= my_pos["size"]
                     del _own_positions[token_id]
                     save_positions()
+                    mname = token_id[:15] + "..."
+                    pnl_emoji = "✅" if pnl_abs >= 0 else "🛑"
+                    send_feishu(f"{pnl_emoji} 跟单平仓", [
+                        f"**市场**: {mname}",
+                        f"**盈亏**: {pnl_abs:+.2f} USD ({pnl_abs/my_pos['size']*100:+.1f}%)",
+                        f"**回收**: ${recovered:.2f}",
+                    ])
                 except Exception as e:
                     log.error(f"[Close] Error: {e}")
 
@@ -499,6 +553,14 @@ def main_loop():
             except Exception:
                 pass
             last_status = now
+
+        # --- 2-hour timed report (aligned to Beijing time) ---
+        if now - last_report > 7200:
+            try:
+                send_daily_report()
+                last_report = now
+            except Exception:
+                pass
 
         # --- Capital check ---
         used_pct = _used_capital / USER_CAPITAL if USER_CAPITAL > 0 else 0
