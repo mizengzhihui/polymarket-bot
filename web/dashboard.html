@@ -1,78 +1,425 @@
 <!DOCTYPE html>
-<html lang=zh-CN>
+<html lang="zh-CN">
 <head>
-<meta charset=UTF-8>
-<meta name=viewport content=width=device-width, initial-scale=1.0>
-<title>Poly_Copy 仪表盘</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poly_Copy HQ</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0c14;color:#c8cdd8;font-family:'JetBrains Mono','Courier New',monospace;padding:2rem}
-h1{color:#22c55e;font-size:1.3rem;margin-bottom:1.5rem}
-h1 span{color:#697086;font-size:0.85rem}
-.card{background:#111521;border:1px solid #1e2438;border-radius:8px;padding:1.2rem;margin-bottom:1rem}
-.card h2{color:#eef0f6;font-size:0.95rem;margin-bottom:0.8rem}
-.row{display:flex;gap:1rem;flex-wrap:wrap}
-.metric{flex:1;min-width:120px}
-.metric .val{font-size:1.4rem;font-weight:700;color:#22c55e}
-.metric .val.red{color:#ef4444}
-.metric .label{font-size:0.7rem;color:#697086;text-transform:uppercase;margin-top:2px}
-table{width:100%;border-collapse:collapse;font-size:0.8rem}
-th{text-align:left;color:#697086;border-bottom:1px solid #1e2438;padding:0.5rem 0.3rem;font-size:0.7rem}
-td{padding:0.4rem 0.3rem;border-bottom:1px solid #1e2438}
-.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-.status-dot.green{background:#22c55e}
-.status-dot.red{background:#ef4444}
-.status-dot.yellow{background:#f59e0b}
-#updated{color:#697086;font-size:0.7rem;margin-top:1rem}
+:root {
+  --bg: #0a0c14; --surface: #111521; --surface2: #161b2a;
+  --border: #1e2438; --border-light: #252c42;
+  --text: #c8cdd8; --text-dim: #697086; --text-bright: #eef0f6;
+  --green: #22c55e; --green-bg: rgba(34,197,94,0.1);
+  --red: #ef4444; --red-bg: rgba(239,68,68,0.1);
+  --amber: #f59e0b; --amber-bg: rgba(245,158,11,0.1);
+  --blue: #60a5fa; --blue-bg: rgba(96,165,250,0.1);
+  --cyan: #22d3ee; --purple: #a78bfa;
+  --radius: 10px; --radius-sm: 6px;
+}
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5;
+}
+body::before {
+  content:''; position:fixed; inset:0;
+  background-image: linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 48px 48px; pointer-events:none; z-index:0;
+}
+.header {
+  position:sticky; top:0; z-index:100;
+  background: rgba(10,12,20,0.85); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border); padding: 0 24px; height: 56px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.header-left { display:flex; align-items:center; gap:14px; }
+.logo { font-size:17px; font-weight:700; color:var(--text-bright); letter-spacing:-0.3px; }
+.logo span { color:var(--cyan); }
+.status-pill {
+  display:flex; align-items:center; gap:7px; font-size:12px; font-weight:600;
+  padding:4px 12px; border-radius:20px;
+}
+.status-pill.running { background:var(--green-bg); color:var(--green); }
+.status-pill.stopped { background:var(--red-bg); color:var(--red); }
+.status-pill.paused { background:var(--amber-bg); color:var(--amber); }
+.status-pill .dot { width:7px; height:7px; border-radius:50%; }
+.status-pill.running .dot { background:var(--green); box-shadow:0 0 8px var(--green); animation:pulse 2s infinite; }
+.status-pill.stopped .dot { background:var(--red); }
+.status-pill.paused .dot { background:var(--amber); box-shadow:0 0 8px var(--amber); animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.header-right { display:flex; align-items:center; gap:12px; font-size:12px; color:var(--text-dim); }
+.header-right .time { font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--text); }
+.container { position:relative; z-index:1; max-width:1280px; margin:0 auto; padding:20px 24px; }
+.stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:10px; margin-bottom:24px; }
+.stat-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:14px 18px; position:relative; overflow:hidden; transition:border-color 0.2s;
+}
+.stat-card:hover { border-color:var(--border-light); }
+.stat-card::before { content:''; position:absolute; top:0; left:12px; right:12px; height:2px; border-radius:0 0 2px 2px; opacity:0.6; }
+.stat-card.card-green::before { background:var(--green); }
+.stat-card.card-red::before { background:var(--red); }
+.stat-card.card-blue::before { background:var(--blue); }
+.stat-card.card-amber::before { background:var(--amber); }
+.stat-card.card-purple::before { background:var(--purple); }
+.stat-card .stat-label { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-dim); margin-bottom:6px; }
+.stat-card .stat-value { font-size:22px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--text-bright); }
+.stat-card .stat-value.green { color:var(--green); }
+.stat-card .stat-value.red { color:var(--red); }
+.stat-card .stat-value.blue { color:var(--blue); }
+.stat-card .stat-value.amber { color:var(--amber); }
+.stat-card .stat-sub { font-size:11px; color:var(--text-dim); margin-top:3px; }
+.section { margin-bottom:24px; }
+.section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.section-title { font-size:14px; font-weight:700; color:var(--text-bright); display:flex; align-items:center; gap:8px; }
+.section-badge { font-size:10.5px; font-weight:600; color:var(--text-dim); }
+.panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+thead th {
+  text-align:left; padding:10px 14px; font-size:10.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.5px; color:var(--text-dim);
+  background:var(--surface2); border-bottom:1px solid var(--border); white-space:nowrap;
+}
+tbody td { padding:10px 14px; border-bottom:1px solid rgba(255,255,255,0.03); font-size:13px; white-space:nowrap; }
+tbody tr:hover { background:rgba(255,255,255,0.015); }
+.mono { font-family:'JetBrains Mono',monospace; font-size:12px; }
+.pnl-positive { color:var(--green); font-weight:600; font-family:'JetBrains Mono',monospace; }
+.pnl-negative { color:var(--red); font-weight:600; font-family:'JetBrains Mono',monospace; }
+.tag {
+  display:inline-block; padding:2px 8px; border-radius:10px;
+  font-size:10.5px; font-weight:600; letter-spacing:0.3px; text-transform:uppercase;
+}
+.tag.trade { background:var(--blue-bg); color:var(--blue); }
+.tag.error { background:var(--red-bg); color:var(--red); }
+.tag.stop_loss { background:rgba(244,63,94,0.15); color:#f43f5e; }
+.tag.check { background:rgba(107,114,128,0.15); color:#9ca3af; }
+.score-bar-wrap { display:flex; align-items:center; gap:8px; }
+.score-bar { flex:1; max-width:80px; height:4px; border-radius:2px; background:var(--border); overflow:hidden; }
+.score-bar-fill { height:100%; border-radius:2px; transition:width 0.5s; }
+.score-bar-fill.high { background:linear-gradient(90deg,var(--green),var(--cyan)); }
+.score-bar-fill.mid { background:linear-gradient(90deg,var(--amber),#fbbf24); }
+.score-bar-fill.low { background:linear-gradient(90deg,var(--red),#f87171); }
+.score-value { font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12px; min-width:28px; }
+.empty { padding:32px 20px; text-align:center; color:var(--text-dim); font-size:13px; }
+.cb-alert {
+  background:var(--red-bg); border:1px solid rgba(239,68,68,0.25); border-radius:var(--radius);
+  padding:10px 16px; margin-bottom:16px; font-size:13px; font-weight:600; color:var(--red); display:none;
+}
+.cb-alert.show { display:block; }
+.config-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1px; background:var(--border); }
+.config-item { background:var(--surface); padding:14px 18px; }
+.config-item .cfg-label { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-dim); margin-bottom:4px; }
+.config-item .cfg-value { font-size:14px; font-weight:600; color:var(--text-bright); }
+.pnl-chart-wrap { padding:16px 20px 10px; }
+.pnl-chart-wrap canvas { width:100%; height:180px; display:block; }
+.log-viewer {
+  background:#080a10; border:1px solid var(--border); border-radius:0 0 var(--radius-sm) var(--radius-sm);
+  font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.6;
+  max-height:400px; overflow-y:auto; padding:10px 14px;
+  white-space:pre-wrap; word-break:break-all; color:#9ca3af;
+}
+::-webkit-scrollbar { width:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+@media(max-width:768px) {
+  .header { padding:0 14px; } .container { padding:14px; }
+  .stats-row { grid-template-columns:1fr 1fr; }
+  .stat-card .stat-value { font-size:18px; }
+  table { font-size:11px; } thead th,tbody td { padding:6px 8px; }
+}
 </style>
 </head>
 <body>
-<h1>Poly_Copy <span>仪表盘</span></h1>
-<div class=row>
-  <div class=card style=flex:2>
-    <h2>状态</h2>
-    <div id=status><span class=status-dot green></span> 加载中...</div>
+<div class="header">
+  <div class="header-left">
+    <div class="logo">Poly<span>Copy</span> HQ</div>
+    <div id="statusPill" class="status-pill stopped"><span class="dot"></span><span id="statusLabel">--</span></div>
   </div>
-  <div class=card style=flex:3>
-    <h2>指标</h2>
-    <div class=row id=metrics>
-      <div class=metric><div class=val>--</div><div class=label>余额</div></div>
-      <div class=metric><div class=val>--</div><div class=label>跟单数</div></div>
-      <div class=metric><div class=val>--</div><div class=label>错误</div></div>
-      <div class=metric><div class=val>--</div><div class=label>运行时长</div></div>
+  <div class="header-right">
+    <span class="time">北京时间 <span id="clock">--:--:--</span></span>
+  </div>
+</div>
+<div class="container">
+  <div id="cbAlert" class="cb-alert">熔断触发 — 日亏损超限，今日暂停交易</div>
+  <div class="stats-row" id="statsRow"></div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">当前持仓</div>
+      <span class="section-badge" id="posCount"></span>
     </div>
+    <div class="panel" id="positionsPanel"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">盈亏历史</div>
+      <span class="section-badge" id="pnlPeriod"></span>
+    </div>
+    <div class="panel"><div class="pnl-chart-wrap"><canvas id="pnlChart"></canvas></div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">交易员评分（全部）</div>
+      <span class="section-badge" id="traderCount"></span>
+    </div>
+    <div class="panel" id="traderPanel"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">最近事件</div>
+      <span class="section-badge" id="eventCount"></span>
+    </div>
+    <div class="panel" id="eventsPanel"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">系统日志</div>
+      <span class="section-badge">自动刷新</span>
+    </div>
+    <div class="panel" id="logPanel"><div class="empty">加载中...</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">系统配置</div></div>
+    <div id="configPanel"></div>
   </div>
 </div>
-<div class=card>
-  <h2>近期事件</h2>
-  <table><thead><tr><th>时间</th><th>类型</th><th>消息</th></tr></thead><tbody id=events></tbody></table>
-</div>
-<div class=card>
-  <h2>交易员评分</h2>
-  <table><thead><tr><th>钱包</th><th>评分</th><th>倍数</th><th>可信</th></tr></thead><tbody id=traders></tbody></table>
-</div>
-<p id=updated>等待数据...</p>
+
 <script>
-async function refresh(){
-  try{
-    const r=await fetch('/api/bot'); if(!r.ok) throw r.status;
-    const d=await r.json();
-    const st=d.status;
-    document.getElementById('status').innerHTML='<span class=status-dot +(st===running?green:st===paused?yellow:red)+></span> '+(st==='running'?'运行中':st==='paused'?'已暂停':'已停止');
-    document.querySelector('#metrics .metric:nth-child(1) .val').textContent='$'+(d.prev_balance||0).toFixed(2);
-    document.querySelector('#metrics .metric:nth-child(2) .val').textContent=d.trades_copied||0;
-    document.querySelector('#metrics .metric:nth-child(3) .val').textContent=d.errors||0;
-    document.querySelector('#metrics .metric:nth-child(4) .val').textContent=d.uptime_hours?.toFixed(1)+' 小时'||'--';
-    const ev=d.recent_events||[]; let eh='';
-    for(let e of ev.slice(-15)) eh+='<tr><td>'+e.time+'</td><td>'+e.type+'</td><td>'+(e.message||'').slice(0,60)+'</td></tr>';
-    document.getElementById('events').innerHTML=eh;
-    const ts=d.trader_scores||{}; let th='';
-    for(let w in ts){let s=ts[w];th+='<tr><td>'+w.slice(0,10)+'...</td><td>'+s.score+'</td><td>'+s.multiplier+'x</td><td>'+(s.reliable?'✅':'❌')+'</td></tr>'}
-    document.getElementById('traders').innerHTML=th;
-    document.getElementById('updated').textContent='更新于: '+new Date().toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'});
-  }catch(e){document.getElementById('status').innerHTML='<span class=status-dot red></span> 离线'}
+var API = '/api/bot';
+var _prevBal = 0;
+
+function fmtUSD(n) {
+  if (n == null || isNaN(n)) return '$0';
+  return '$' + Number(n).toLocaleString(undefined, {minimumFractionDigits:0,maximumFractionDigits:0});
 }
-refresh(); setInterval(refresh,5000);
+function fmtUSD2(n) {
+  if (n == null || isNaN(n)) return '$0.00';
+  return '$' + Number(n).toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtPnl(n) {
+  if (n == null || isNaN(n)) return '+$0.00';
+  var v = Number(n);
+  return (v>=0?'+':'') + '$' + Math.abs(v).toFixed(2);
+}
+function fmtHours(h) {
+  if (!h || h <= 0) return '0h';
+  var d = Math.floor(h/24), rh = Math.floor(h%24);
+  return (d>0?d+'d ':'') + rh + 'h';
+}
+function toBeijing(utcStr) {
+  if (!utcStr) return '';
+  var parts = utcStr.split(':');
+  if (parts.length < 2) return utcStr;
+  var h = parseInt(parts[0]) + 8;
+  if (h >= 24) h -= 24;
+  return String(h).padStart(2,'0') + ':' + parts[1] + (parts[2]?':'+parts[2]:'');
+}
+function updateClock() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('zh-CN', {timeZone:'Asia/Shanghai', hour12:false});
+}
+
+function drawPnlChart(history) {
+  var canvas = document.getElementById('pnlChart');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.parentElement.clientWidth - 40;
+  var H = 180;
+  canvas.width = W * (window.devicePixelRatio||1);
+  canvas.height = H * (window.devicePixelRatio||1);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(window.devicePixelRatio||1, window.devicePixelRatio||1);
+
+  var entries = Object.entries(history||{}).sort();
+  if (entries.length === 0) {
+    ctx.fillStyle = '#697086'; ctx.font = '14px Inter, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('暂无数据 — 明天开始会有记录', W/2, H/2);
+    document.getElementById('pnlPeriod').textContent = '0 天';
+    return;
+  }
+  var last30 = entries.slice(-30);
+  var barW = Math.max(8, (W / last30.length) - 3);
+  var maxVal = Math.max(1, ...last30.map(function(e){ return Math.abs(e[1].daily_loss||0); }));
+  var scale = (H - 30) / maxVal;
+
+  ctx.strokeStyle = '#1e2438'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H-24); ctx.lineTo(W, H-24); ctx.stroke();
+
+  last30.forEach(function(e, i) {
+    var loss = e[1].daily_loss || 0;
+    var h = Math.max(2, Math.abs(loss) * scale);
+    var x = i * (barW + 2);
+    ctx.fillStyle = loss > 0 ? '#ef4444' : '#22c55e';
+    ctx.fillRect(x, H - 24 - h, barW, h);
+    if (i % Math.ceil(last30.length/6) === 0) {
+      ctx.fillStyle = '#697086'; ctx.font = '9px JetBrains Mono, monospace';
+      ctx.textAlign = 'left'; ctx.fillText(e[0].slice(5), x, H-8);
+    }
+  });
+  document.getElementById('pnlPeriod').textContent = last30.length + ' 天';
+}
+
+function refreshLogs() {
+  fetch('/api/logs?lines=80').then(function(r){return r.text();}).then(function(t) {
+    var panel = document.getElementById('logPanel');
+    if (!t.trim()) { panel.innerHTML = '<div class="empty">暂无日志</div>'; return; }
+    var html = t.split('\n').map(function(line) {
+      // Convert UTC timestamps in log lines to Beijing time
+      var bj = line.replace(/(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}):(\d{2})/g, function(m,d,h,min,s) {
+        var bjH = (parseInt(h)+8)%24;
+        return d + ' ' + String(bjH).padStart(2,'0') + ':' + min + ':' + s + ' BJ';
+      });
+      var cls = /ERROR|FATAL|CRITICAL/i.test(bj) ? ' style="color:#ef4444"' :
+                /WARNING|WARN/i.test(bj) ? ' style="color:#f59e0b"' : '';
+      return '<span' + cls + '>' + bj.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</span>';
+    }).join('\n');
+    panel.innerHTML = '<div class="log-viewer">' + html + '</div>';
+    var v = panel.querySelector('.log-viewer');
+    if (v) v.scrollTop = v.scrollHeight;
+  }).catch(function(){});
+}
+
+function render(data) {
+  var status = data.status || 'stopped';
+  var pill = document.getElementById('statusPill');
+  pill.className = 'status-pill ' + status;
+  document.getElementById('statusLabel').textContent =
+    status === 'running' ? '运行中' : status === 'paused' ? '已暂停' : '已停止';
+
+  var cb = document.getElementById('cbAlert');
+  cb.className = 'cb-alert' + (data.circuit_breaker ? ' show' : '');
+
+  updateClock();
+
+  var cfg = data.config || {};
+  var bal = data.prev_balance || 0;
+  var td = data.today || {};
+  var dailyLoss = td.daily_loss || 0;
+  var totalPnl = bal - (cfg.user_capital || 0);
+
+  // Stats
+  var stats = [
+    {label:'USDC 余额', value:fmtUSD2(bal), cls:bal>0?'green':'red', cardCls:'card-green', sub:totalPnl!==0 ? fmtPnl(totalPnl) + ' 累计' : ''},
+    {label:'初始资金', value:fmtUSD(cfg.user_capital), cls:'', cardCls:'card-purple'},
+    {label:'今日已实现盈亏', value:dailyLoss > 0 ? '-$'+dailyLoss.toFixed(2) : '$0.00', cls:dailyLoss>0?'red':'green', cardCls:dailyLoss>0?'card-red':'card-green'},
+    {label:'持仓市值', value:fmtUSD2((data.positions||[]).reduce(function(s,p){return s+(p.current_value||0);},0)), cls:'blue', cardCls:'card-blue'},
+    {label:'运行时长', value:fmtHours(data.uptime_hours||0), cls:'blue', cardCls:'card-blue'},
+    {label:'今日跟单', value:String(data.trades_copied||0)+' 笔', cls:'blue', cardCls:'card-blue'},
+    {label:'熔断', value:data.circuit_breaker?'触发':'正常', cls:data.circuit_breaker?'red':'green', cardCls:data.circuit_breaker?'card-red':'card-green'},
+    {label:'错误', value:String(data.errors||0)+' 次', cls:(data.errors||0)>0?'amber':'green', cardCls:(data.errors||0)>0?'card-amber':'card-green'},
+  ];
+  document.getElementById('statsRow').innerHTML = stats.map(function(s){
+    return '<div class="stat-card '+s.cardCls+'">' +
+      '<div class="stat-label">'+s.label+'</div>' +
+      '<div class="stat-value '+s.cls+'">'+s.value+'</div>' +
+      (s.sub ? '<div class="stat-sub">'+s.sub+'</div>' : '') + '</div>';
+  }).join('');
+
+  // Positions
+  var positions = data.positions || [];
+  document.getElementById('posCount').textContent = positions.length + ' 个';
+  if (positions.length === 0) {
+    document.getElementById('positionsPanel').innerHTML = '<div class="empty">暂无持仓</div>';
+  } else {
+    var rows = positions.map(function(p){
+      var pnl = p.cash_pnl||0;
+      return '<tr>' +
+        '<td>'+(p.title||'?').substring(0,40)+'</td>' +
+        '<td>'+(p.outcome||'-')+'</td>' +
+        '<td class="mono">'+Number(p.size||0).toFixed(0)+'</td>' +
+        '<td class="mono">'+fmtUSD2(p.avg_price)+'</td>' +
+        '<td class="mono">'+fmtUSD2(p.current_price)+'</td>' +
+        '<td class="mono">'+fmtUSD2(p.current_value)+'</td>' +
+        '<td class="'+(pnl>=0?'pnl-positive':'pnl-negative')+'">'+fmtPnl(pnl)+'</td></tr>';
+    }).join('');
+    var tPnl = positions.reduce(function(s,p){return s+(p.cash_pnl||0);},0);
+    document.getElementById('positionsPanel').innerHTML =
+      '<table><thead><tr><th>市场</th><th>结果</th><th>数量</th><th>均价</th><th>现价</th><th>价值</th><th>盈亏</th></tr></thead><tbody>'+rows+
+      '<tr style="font-weight:700;background:rgba(255,255,255,0.015)"><td colspan="6" style="color:var(--text-bright)">合计</td>'+
+      '<td class="'+(tPnl>=0?'pnl-positive':'pnl-negative')+'">'+fmtPnl(tPnl)+'</td></tr></tbody></table>';
+  }
+
+  // Trader scores — ALL traders, sort by score
+  var scores = data.trader_scores || {};
+  var followedSet = {};
+  (cfg.follow_wallets||[]).forEach(function(w){followedSet[w.toLowerCase()]=true;});
+
+  var entries = Object.entries(scores)
+    .filter(function(e){return (e[1].days||0) >= 2;})
+    .sort(function(a,b){return (b[1].score||0) - (a[1].score||0);});
+
+  document.getElementById('traderCount').textContent = entries.length + ' 人 (≥2天)';
+  if (entries.length === 0) {
+    document.getElementById('traderPanel').innerHTML = '<div class="empty">暂无交易员数据</div>';
+  } else {
+    document.getElementById('traderPanel').innerHTML =
+      '<table><thead><tr><th>钱包</th><th>评分</th><th>倍率</th><th>天数</th><th>状态</th></tr></thead><tbody>' +
+      entries.map(function(e){
+        var w = e[0], s = e[1];
+        var score = s.score||0;
+        var barCls = score>=80?'high':(score>=50?'mid':'low');
+        var barW = Math.min(100, Math.max(5, score));
+        var followed = followedSet[w.toLowerCase()];
+        return '<tr'+(followed?' style="background:rgba(96,165,250,0.06)"':'')+'>' +
+          '<td class="mono">'+(followed?'★ ':'')+w.substring(0,14)+'...</td>' +
+          '<td><div class="score-bar-wrap"><div class="score-bar"><div class="score-bar-fill '+barCls+'" style="width:'+barW+'%"></div></div>'+
+          '<span class="score-value">'+score+'</span></div></td>' +
+          '<td class="mono">'+(s.multiplier!=null?s.multiplier.toFixed(2)+'x':'?')+'</td>' +
+          '<td>'+(s.days||'?')+'d</td>' +
+          '<td>'+(s.reliable?'<span style="color:var(--green);font-weight:600">可信</span>':'<span style="color:var(--amber)">预热</span>')+
+          (followed?' <span style="color:var(--blue);font-size:10px;font-weight:600">跟单中</span>':'')+'</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  // Events
+  var events = (data.recent_events||[]).slice().reverse().slice(0, 40);
+  document.getElementById('eventCount').textContent = events.length + ' 条';
+  if (events.length === 0) {
+    document.getElementById('eventsPanel').innerHTML = '<div class="empty">暂无事件 — bot 运行后会逐渐积累</div>';
+  } else {
+    document.getElementById('eventsPanel').innerHTML =
+      '<table><thead><tr><th>时间(BJ)</th><th>类型</th><th>消息</th></tr></thead><tbody>' +
+      events.map(function(e){
+        var tagCls = e.type==='trade'?'trade':(e.type==='stop_loss'?'stop_loss':(e.type==='error'?'error':'check'));
+        return '<tr><td class="mono" style="color:var(--text-dim)">'+toBeijing(e.time)+'</td>'+
+          '<td><span class="tag '+tagCls+'">'+e.type+'</span></td>'+
+          '<td style="max-width:400px;overflow:hidden;text-overflow:ellipsis">'+e.message+'</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  // Config
+  document.getElementById('configPanel').innerHTML =
+    '<div class="config-grid">' +
+    '<div class="config-item"><div class="cfg-label">跟单对象</div><div class="cfg-value">'+(cfg.follow_wallets||[]).length+' 人</div></div>' +
+    '<div class="config-item"><div class="cfg-label">COPY_MULTIPLIER</div><div class="cfg-value mono">'+(cfg.copy_multiplier||'?')+'x</div></div>' +
+    '<div class="config-item"><div class="cfg-label">MAX_POSITION_SIZE</div><div class="cfg-value mono">'+fmtUSD(cfg.max_position_size)+'</div></div>' +
+    '<div class="config-item"><div class="cfg-label">MAX_DAILY_LOSS</div><div class="cfg-value mono">'+fmtUSD(cfg.max_daily_loss)+'</div></div>' +
+    '<div class="config-item"><div class="cfg-label">MAX_POSITION_LOSS</div><div class="cfg-value mono">'+fmtUSD(cfg.max_position_loss)+'</div></div>' +
+    '<div class="config-item"><div class="cfg-label">STOP_LOSS_PCT / TAKE_PROFIT</div><div class="cfg-value mono">'+
+    Math.round((cfg.stop_loss_pct||0.3)*100)+'% / '+Math.round((cfg.take_profit_pct||0.5)*100)+'%</div></div>' +
+    '</div>';
+
+  // PnL chart
+  if (data.pnl_history) drawPnlChart(data.pnl_history);
+}
+
+function refresh() {
+  fetch(API).then(function(r){return r.json();}).then(render).catch(function(){});
+}
+
+updateClock();
+setInterval(updateClock, 1000);
+refresh();
+refreshLogs();
+setInterval(refresh, 5000);
+setInterval(refreshLogs, 15000);
 </script>
 </body>
 </html>

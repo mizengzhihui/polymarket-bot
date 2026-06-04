@@ -16,19 +16,7 @@ def check():
     eoa = Account.from_key(PRIVATE_KEY).address
     dw = compute_deposit_wallet(eoa)
 
-    from config import RPC_URLS
-    w3 = None
-    for rpc_url in RPC_URLS:
-        try:
-            w3 = Web3(Web3.HTTPProvider(rpc_url))
-            if w3.is_connected():
-                print(f"  Connected to RPC: {rpc_url}")
-                break
-        except Exception:
-            continue
-    if w3 is None or not w3.is_connected():
-        print("ERROR: Could not connect to any Polygon RPC endpoint")
-        return
+    w3 = Web3(Web3.HTTPProvider("https://1rpc.io/matic"))
     usdc = Web3.to_checksum_address("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359")
     usdc_abi = json.loads('[{"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]')
     usdc_ctr = w3.eth.contract(address=usdc, abi=usdc_abi)

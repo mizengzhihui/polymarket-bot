@@ -28,11 +28,10 @@ TRADERS = {
 
 
 def fetch_trades(wallet):
-    from config import safe_get
-    resp = safe_get(
+    import requests
+    resp = requests.get(
         'https://data-api.polymarket.com/trades',
-        params={'user': wallet, 'limit': 1000, 'takerOnly': True}, timeout=30,
-        max_retries=2)
+        params={'user': wallet, 'limit': 1000, 'takerOnly': True}, timeout=30)
     data = resp.json()
     # Normalize timestamps: ensure seconds, not milliseconds
     for t in data:
@@ -148,30 +147,10 @@ class BacktestEngine:
             cost = copy * price
 
         if self.unrealized_pnl() < -MAX_PORTFOLIO_LOSS:
-            self.skipped['drawdown'] += 1
             copy *= 0.25; cost = copy * price
             if copy < MIN_TRADE_SIZE: self.skipped['portfolio_loss'] += 1; return
 
         if copy < MIN_TRADE_SIZE: self.skipped['too_small'] += 1; return
-
-        # Expiry check: skip if market is within 48h of expiry
-        if self.trades and 'end_date' in self.trades[0]:
-            try:
-                end_date = trade.get('end_date', '')
-                if end_date:
-                    from datetime import datetime as dt2, timezone as tz2
-                    end_dt = dt2.fromisoformat(end_date.replace('Z', '+00:00'))
-                    remaining_h = (end_dt - dt2.now(tz2.utc)).total_seconds() / 3600
-                    if remaining_h < 48:
-                        self.skipped['expiry_check'] += 1
-                        return
-                    if remaining_h < 168:
-                        copy *= 0.5
-                        if copy < MIN_TRADE_SIZE:
-                            self.skipped['expiry_check'] += 1
-                            return
-            except Exception:
-                pass
 
         self.usdc -= cost
         if asset in self.positions:

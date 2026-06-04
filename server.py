@@ -71,6 +71,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_json(health_check())
             return
 
+        if path.startswith("/api/logs"):
+            self.send_logs(parsed)
+            return
+
+        if path.startswith("/api/events-log"):
+            self.send_events_log(parsed)
+            return
+
         if path == "/":
             self.send_redirect("/dashboard.html")
             return
@@ -158,6 +166,82 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(body)
         except Exception:
             self.send_error(500, "Internal server error")
+
+    def send_logs(self, parsed):
+        """GET /api/logs?lines=200 → return last N lines of bot.log as text."""
+        params = urllib.parse.parse_qs(parsed.query)
+        lines = int(params.get("lines", ["200"])[0])
+        lines = max(1, min(lines, 2000))
+        log_path = os.path.join(ROOT, "bot.log")
+        try:
+            with open(log_path, "rb") as f:
+                # Seek to roughly last N lines
+                f.seek(0, 2)
+                size = f.tell()
+                buf = bytearray()
+                chunk_size = 4096
+                read_lines = 0
+                pos = size
+                while pos > 0 and read_lines <= lines:
+                    step = min(chunk_size, pos)
+                    pos -= step
+                    f.seek(pos)
+                    chunk = f.read(step)
+                    buf[:0] = chunk
+                    read_lines = buf.count(b"\n")
+                text = bytes(buf).decode("utf-8", errors="replace")
+                log_lines = text.split("\n")
+                # Skip partial first line if we didn't start at beginning
+                if pos > 0:
+                    log_lines = log_lines[1:]
+                result = "\n".join(log_lines[-lines:])
+            body = result.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception:
+            self.send_error(500, "Failed to read log")
+
+    def send_events_log(self, parsed):
+        """GET /api/events-log?date=2026-06-04 → return JSONL events for date."""
+        params = urllib.parse.parse_qs(parsed.query)
+        date = params.get("date", [None])[0]
+        if not date:
+            from datetime import datetime, timezone
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        evt_path = os.path.join(RESULTS_DIR, f"events.log")
+        entries = []
+        try:
+            if os.path.exists(evt_path):
+                with open(evt_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            e = json.loads(line)
+                            entries.append(e)
+                        except Exception:
+                            continue
+            # Also check rotated log
+            rotated = os.path.join(RESULTS_DIR, f"events.{date}.log")
+            if os.path.exists(rotated):
+                with open(rotated, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            e = json.loads(line)
+                            entries.append(e)
+                        except Exception:
+                            continue
+        except Exception:
+            pass
+        self.send_json(entries[-500:])  # Cap at 500
 
     def send_json(self, data):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")

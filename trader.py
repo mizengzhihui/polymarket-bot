@@ -10,7 +10,6 @@ from common.rate_limit import rate_limited
 from config import (
     PRIVATE_KEY, CLOB_HOST, CHAIN_ID, COPY_MULTIPLIER, USER_CAPITAL, DATA_API,
     DEFAULT_TRADER_CAPITAL, MIN_TRADE_SIZE, MAX_POSITION_PCT, get_wallet_config, compute_deposit_wallet,
-    safe_post, safe_get,
 )
 from leaderboard import get_trader_value
 
@@ -67,7 +66,7 @@ def get_client():
         raise RuntimeError("POLYMARKET_PRIVATE_KEY not set")
 
     eoa = Account.from_key(PRIVATE_KEY).address
-    _deposit_wallet = "0x822a7e05105688263467d9a4dA6279A5028CCc62"
+    _deposit_wallet = compute_deposit_wallet(eoa)
 
     _creds = _load_creds()
     if _creds is None:
@@ -76,8 +75,8 @@ def get_client():
             chain_id=CHAIN_ID,
             key=PRIVATE_KEY,
             signature_type=3,
-        funder=_deposit_wallet,
-                    )
+            funder=_deposit_wallet,
+        )
         _creds = client.create_or_derive_api_key()
         _save_creds(_creds)
     elif isinstance(_creds, dict):
@@ -96,7 +95,7 @@ def get_client():
         creds=_creds,
         signature_type=3,
         funder=_deposit_wallet,
-            )
+    )
     return _client
 
 
@@ -114,10 +113,7 @@ def get_order_book(token_id: str) -> dict:
     client = get_client()
     try:
         return client.get_order_book(token_id)
-    except Exception as e:
-        err_str = str(e)
-        if "404" in err_str or "No orderbook" in err_str:
-            pass  # silent skip for closed/inactive markets
+    except Exception:
         return None
 
 
@@ -245,12 +241,6 @@ def place_copy_order(token_id, side, price, size):
     client = get_client()
     order_side = Side.BUY if side.upper() == "BUY" else Side.SELL
 
-    # Pre-check: Polymarket CLOB minimum is 5 shares
-    if price <= 0:
-        return False, None, f"Invalid price: {price}"
-    if size < 5:
-        return False, None, f"Size ({size:.2f} shares) below CLOB minimum (5 shares), need >= ${price*5:.2f} at this price"
-
     try:
         resp = client.create_and_post_order(
             order_args=OrderArgsV2(
@@ -262,7 +252,7 @@ def place_copy_order(token_id, side, price, size):
             options=PartialCreateOrderOptions(tick_size="0.01"),
             order_type=OrderType.GTC,
         )
-        order_id = str(resp[0]) if isinstance(resp, (list, tuple)) else resp.get("orderID", resp.get("id", str(resp)))
+        order_id = resp.get("orderID", resp.get("id", str(resp)))
         return True, order_id, None
     except Exception as e:
         return False, None, str(e)
@@ -298,7 +288,7 @@ def place_copy_market_order(token_id, side, amount, ref_price=None):
             options=PartialCreateOrderOptions(tick_size="0.01"),
             order_type=OrderType.FOK,
         )
-        order_id = str(resp[0]) if isinstance(resp, (list, tuple)) else resp.get("orderID", resp.get("id", str(resp)))
+        order_id = resp.get("orderID", resp.get("id", str(resp)))
         return True, order_id, None
     except Exception as e:
         return False, None, str(e)
@@ -330,9 +320,9 @@ def place_copy_ioc_order(token_id, side, amount, ref_price=None):
                 price=worst_price,
             ),
             options=PartialCreateOrderOptions(tick_size="0.01"),
-            order_type=OrderType.FAK,
+            order_type=OrderType.IOC,
         )
-        order_id = str(resp[0]) if isinstance(resp, (list, tuple)) else resp.get("orderID", resp.get("id", str(resp)))
+        order_id = resp.get("orderID", resp.get("id", str(resp)))
         return True, order_id, None
     except Exception as e:
         return False, None, str(e)
@@ -410,7 +400,7 @@ _own_positions_cache = None  # (ts, positions) for API failure fallback
 @rate_limited(max_calls_per_second=5)
 def get_own_positions():
     """Get own open positions via Data API. Falls back to cache on API failure."""
-    import time
+    import time as _time_module
     global _own_positions_cache
     try:
         wallet = get_client().get_address()
@@ -419,6 +409,8 @@ def get_own_positions():
             params={"user": wallet, "limit": 500},
             timeout=15,
         )
+        if resp is None or resp.status_code != 200:
+            raise Exception(f"API returned {resp.status_code if resp else 'None'}")
         positions = []
         for p in resp.json():
             positions.append({
@@ -434,152 +426,35 @@ def get_own_positions():
                 "cash_pnl": float(p.get("cashPnl", 0)),
             })
         # Cache successful response
-        _own_positions_cache = (int(time.time()), positions)
+        _own_positions_cache = (int(_time_module.time()), positions)
         return positions
     except Exception:
         # API failure: fall back to cached positions if available and fresh (< 5 min old)
         if _own_positions_cache:
             cache_ts, cached = _own_positions_cache
-            if int(time.time()) - cache_ts < 300:  # 5 min stale tolerance
-                print(f"  [get_own_positions] API failed, using cache (age: {int(time.time()) - cache_ts}s)")
+            if int(_time_module.time()) - cache_ts < 300:
+                print(f"  [get_own_positions] API failed, using cache (age: {int(_time_module.time()) - cache_ts}s)")
                 return cached
-            # Stale cache: return empty but log warning
             print(f"  [get_own_positions] API failed, cache stale, returning empty")
         return []
 
 
-
 # ============================================================
-# WebSocket (v1.3) — real-time open trade detection
+# Trade polling (for auto-discovery / close monitoring)
 # ============================================================
-import threading, json as _json, time as _time, logging as _logging
-
-_ws = None
-_ws_thread = None
-_ws_running = False
-_ws_callbacks = {}  # event_type -> [callbacks]
+_last_trade_timestamps: dict[str, int] = {}  # wallet -> last seen timestamp
 
 
-def _ws_connect():
-    """Connect to Polymarket WebSocket with auto-reconnect."""
-    import websocket
-    from config import WS_HOST, WS_RECONNECT_DELAY_SEC, WS_RECONNECT_MAX_DELAY_SEC
-
-    def on_message(ws, message):
-        try:
-            data = _json.loads(message)
-            for cb in _ws_callbacks.get("message", []):
-                try:
-                    cb(data)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    def on_error(ws, error):
-        _logging.warning(f"[WS] Error: {error}")
-
-    def on_close(ws, close_status_code, close_msg):
-        _logging.info(f"[WS] Closed ({close_status_code})")
-
-    def on_open(ws):
-        _logging.info("[WS] Connected")
-
-    delay = WS_RECONNECT_DELAY_SEC
-    while _ws_running:
-        try:
-            ws = websocket.WebSocketApp(
-                WS_HOST,
-                on_message=on_message,
-                on_error=on_error,
-                on_close=on_close,
-                on_open=on_open,
-            )
-            ws.run_forever(ping_interval=30, ping_timeout=10)
-        except Exception as e:
-            _logging.warning(f"[WS] Connection failed: {e}")
-        if not _ws_running:
-            break
-        _time.sleep(min(delay, WS_RECONNECT_MAX_DELAY_SEC))
-        delay = min(delay * 1.5, WS_RECONNECT_MAX_DELAY_SEC)
-
-
-def ws_start():
-    """Start WebSocket in background thread."""
-    global _ws_running, _ws_thread
-    if _ws_running:
-        return
-    _ws_running = True
-    _ws_thread = threading.Thread(target=_ws_connect, daemon=True)
-    _ws_thread.start()
-    _logging.info("[WS] Background thread started")
-
-
-def ws_stop():
-    """Stop WebSocket connection."""
-    global _ws_running
-    _ws_running = False
-
-
-def ws_subscribe(event_type, callback):
-    """Register a callback for an event type."""
-    if event_type not in _ws_callbacks:
-        _ws_callbacks[event_type] = []
-    _ws_callbacks[event_type].append(callback)
-
-
-# ============================================================
-# Trade monitoring (v1.3) — poll Data API for trade detection
-# ============================================================
-_last_trade_timestamps = {}  # wallet -> last seen timestamp
-
-
-def poll_trader_sells(wallet, since_timestamp=None):
-    """Poll Data API for new sell trades by a trader.
-    Returns list of sell trades newer than since_timestamp (or last recorded).
-    """
+def poll_trader_buys(wallet: str, since_timestamp: int = None) -> list[dict]:
+    """Poll Data API for new buy trades by a trader."""
     global _last_trade_timestamps
-    from config import DATA_API, safe_get
-
-    since = since_timestamp or _last_trade_timestamps.get(wallet, 0)
-    try:
-        resp = safe_get(f"{DATA_API}/trades", params={"user": wallet, "limit": 20}, timeout=10)
-        if not resp or resp.status_code != 200:
-            return []
-        trades = resp.json()
-        sells = []
-        latest_ts = since
-        for t in trades:
-            ts = int(t.get("timestamp", 0))
-            if ts > since and t.get("side") == "SELL":
-                sells.append(t)
-            if ts > latest_ts:
-                latest_ts = ts
-        if latest_ts > since:
-            _last_trade_timestamps[wallet] = latest_ts
-        return sells
-    except Exception:
-        return []
-
-
-def poll_all_trader_sells(wallets):
-    """Poll for sells across all tracked wallets."""
-    all_sells = {}
-    for w in wallets:
-        sells = poll_trader_sells(w)
-        if sells:
-            all_sells[w] = sells
-    return all_sells
-
-
-def poll_trader_buys(wallet, since_timestamp=None):
-    """Poll Data API for new buy trades by a trader. Returns list of buy trades."""
-    global _last_trade_timestamps
-    from config import DATA_API, safe_get
-
     since = since_timestamp or _last_trade_timestamps.get(wallet + "_buy", 0)
     try:
-        resp = safe_get(f"{DATA_API}/trades", params={"user": wallet, "limit": 20}, timeout=10)
+        resp = safe_get(
+            f"{DATA_API}/trades",
+            params={"user": wallet, "limit": 20},
+            timeout=10,
+        )
         if not resp or resp.status_code != 200:
             return []
         trades = resp.json()
@@ -598,7 +473,35 @@ def poll_trader_buys(wallet, since_timestamp=None):
         return []
 
 
-def poll_all_trader_buys(wallets):
+def poll_trader_sells(wallet: str, since_timestamp: int = None) -> list[dict]:
+    """Poll Data API for new sell trades by a trader."""
+    global _last_trade_timestamps
+    since = since_timestamp or _last_trade_timestamps.get(wallet, 0)
+    try:
+        resp = safe_get(
+            f"{DATA_API}/trades",
+            params={"user": wallet, "limit": 20},
+            timeout=10,
+        )
+        if not resp or resp.status_code != 200:
+            return []
+        trades = resp.json()
+        sells = []
+        latest_ts = since
+        for t in trades:
+            ts = int(t.get("timestamp", 0))
+            if ts > since and t.get("side") == "SELL":
+                sells.append(t)
+            if ts > latest_ts:
+                latest_ts = ts
+        if latest_ts > since:
+            _last_trade_timestamps[wallet] = latest_ts
+        return sells
+    except Exception:
+        return []
+
+
+def poll_all_trader_buys(wallets: list[str]) -> dict[str, list[dict]]:
     """Poll for buys across all tracked wallets."""
     all_buys = {}
     for w in wallets:
@@ -606,3 +509,13 @@ def poll_all_trader_buys(wallets):
         if buys:
             all_buys[w] = buys
     return all_buys
+
+
+def poll_all_trader_sells(wallets: list[str]) -> dict[str, list[dict]]:
+    """Poll for sells across all tracked wallets."""
+    all_sells = {}
+    for w in wallets:
+        sells = poll_trader_sells(w)
+        if sells:
+            all_sells[w] = sells
+    return all_sells
